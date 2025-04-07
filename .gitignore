@@ -4,6 +4,7 @@ transcripts
 checkpoint
 conf/api/
 run.sh
+sandbox.py
 
 *pycache*
 *.pyc

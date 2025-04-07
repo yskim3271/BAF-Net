@@ -1,0 +1,7 @@
+model_name: fcnef
+input_type: am+tm
+
+param:
+  depth: 6
+  channels: 30
+  kernel_size: 55

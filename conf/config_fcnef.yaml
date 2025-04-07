@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - model: seconformer_tm
+  - model: bafnet
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
@@ -40,7 +40,7 @@ valid_noise:
 
 # noise augmentation for test
 test_noise:
-  snr_step: [-20, -10, 0, 10, 15, 20]
+  snr_step: [-20, -10, 0, 10, 15]
   reverb_proportion: 0.5
   target_dB_FS: -25
   target_dB_FS_floating_value: 0
@@ -82,7 +82,7 @@ ddp:
 
 checkpoint: true
 checkpoint_file: checkpoint.th
-continue_from: 
+continue_from:
 samples_dir: samples
 log_dir: tensorbd
 

@@ -11,24 +11,33 @@ from pesq import pesq
 from pystoi import stoi
 from metric_helper import wss, llr, SSNR, trim_mos
 from utils import bold, LogProgress
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+
 
 def get_stts(args, logger, enhanced):
 
-    processor = Wav2Vec2Processor.from_pretrained("kresnik/wav2vec2-large-xlsr-korean")
-    model = Wav2Vec2ForCTC.from_pretrained("kresnik/wav2vec2-large-xlsr-korean").to(args.device)
-    
     cer, wer = 0, 0
+    model_id = "ghost613/whisper-large-v3-turbo-korean"
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+    model_id, torch_dtype=torch.float32, low_cpu_mem_usage=True, use_safetensors=True
+    )
+    model.to(args.device)
+    
+    processor = AutoProcessor.from_pretrained(model_id)
+
+    pipe = pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        torch_dtype=torch.float32,
+        device=args.device,)
+    
     iterator = LogProgress(logger, enhanced, name="STT Evaluation")
     for wav, text in iterator:
-        inputs = processor(wav.squeeze(), sampling_rate=16000, return_tensors="pt", padding="longest")
-        input_values = inputs.input_values.to("cuda")
-        
         with torch.no_grad():
-            logits = model(input_values).logits
-        
-        predicted_ids = torch.argmax(logits, dim=-1)
-        transcription = processor.batch_decode(predicted_ids)[0]
+            transcription = pipe(wav, generate_kwargs={"num_beams": 1, "max_length": 100})['text']
+
         cer += sarmetric.get_cer(text, transcription, rm_punctuation=True)['cer']
         wer += sarmetric.get_wer(text, transcription, rm_punctuation=True)['wer']
     
@@ -36,6 +45,7 @@ def get_stts(args, logger, enhanced):
     wer /= len(enhanced)
     
     return cer, wer
+
 
     
 ## Code modified from https://github.com/wooseok-shin/MetricGAN-plus-pytorch/tree/main
@@ -120,7 +130,7 @@ def evaluate(args, model, data_loader_list, epoch, logger):
             "covl": covl
         }
         logger.info(bold(f"Epoch {epoch+1}, Performance on {snr}dB: PESQ={pesq:.4f}, STOI={stoi:.4f}, CSIG={csig:.4f}, CBAK={cbak:.4f}, COVL={covl:.4f}"))
-        
+                
         if args.eval_stt:
             cer, wer = get_stts(args, logger, enhanced)
             metrics[f'{snr}dB']['cer'] = cer

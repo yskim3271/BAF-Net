@@ -35,5 +35,5 @@ param:
     win_inc: 100
     fft_len: 512
     
-  checkpoint_dccrn: /home/user114/yunsik/mmtmse/checkpoint/dccrn/checkpoint.th
-  checkpoint_seconformer: /home/user114/yunsik/mmtmse/checkpoint/seconformer_tm/checkpoint.th
+  checkpoint_dccrn: /home/user114/yunsik/mmtmse/checkpoint/dccrn/best.th
+  checkpoint_seconformer: /home/user114/yunsik/mmtmse/checkpoint/seconformer_tm/best.th

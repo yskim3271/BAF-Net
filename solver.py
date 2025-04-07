@@ -9,7 +9,7 @@ import torch.distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
-from enhance import enhance
+from enhance import enhance_multiple_snr
 from evaluate import evaluate
 from utils import bold, copy_state, pull_metric, swap_state, LogProgress
 from criteria import CompositeLoss
@@ -51,7 +51,6 @@ class Solver(object):
         self.loss = CompositeLoss(args.loss).to(self.device)
 
         self.eval_every = args.eval_every   # interval for evaluation
-        self.eval_only = args.eval_only     # if True, only evaluate, no training
             
         # Checkpoint settings
         self.checkpoint = args.checkpoint
@@ -180,25 +179,6 @@ class Solver(object):
             self.writer = SummaryWriter(log_dir=self.log_dir)
 
     def train(self):
-        """Main training loop, including optional evaluation phases."""
-        if self.eval_only:
-            if self.rank == 0:
-                if self.best_state is None:
-                    self.logger.info("No best model found in checkpoint. Use latest model for evaluation...")
-                    if self.is_distributed:
-                        self.model.module.load_state_dict(self.model.module.state_dict())
-                    else:
-                        self.model.load_state_dict(self.model.state_dict())
-                else:
-                    self.logger.info("Use best model for evaluation...")
-                    if self.is_distributed:
-                        self.model.module.load_state_dict(self.best_state['model'])
-                    else:
-                        self.model.load_state_dict(self.best_state['model'])
-                evaluate(self.args, self.model, self.ev_loader_list, 0, self.logger)            
-            
-            return
-
         # If there's a history from the checkpoint, replay metrics
         if self.history and self.rank == 0:  
             self.logger.info("Replaying metrics from previous run")
@@ -269,15 +249,14 @@ class Solver(object):
                         
                         # Temporarily swap model weights with best_state for evaluation
                         with swap_state(self.model.module if self.is_distributed else self.model, self.best_state['model']):
-                            metric = evaluate(self.args, self.model, self.ev_loader_list, epoch, self.logger)
-                            metrics.update(metric)
-                            
-                            # Log test metrics to TensorBoard
-                            for k, v in metric.items():
-                                self.writer.add_scalar(f"Test/{k.capitalize()}", v, epoch)
+                            ev_metric = evaluate(self.args, self.model, self.ev_loader_list, epoch, self.logger)
 
                             self.logger.info('Enhance and save samples...')
-                            enhance(self.args, self.model, self.tt_loader_list, epoch, self.logger, self.samples_dir)
+                            enhance_multiple_snr(self.args, self.model, self.tt_loader_list, epoch, self.samples_dir)
+                    
+                        for snr, metric_item in ev_metric.items():
+                            for k, v in metric_item.items():
+                                self.writer.add_scalar(f"test/{snr}/{k}", v, epoch)
                 
                 # Append metrics to history and print summary
                 self.history.append(metrics)

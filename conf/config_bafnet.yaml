@@ -52,10 +52,12 @@ batch_size: 32
 batch_size_valid: 1
 epochs: 200
 
-# Evaluation only
-eval_only: true
 eval_every: 200  # compute test metrics every so epochs
 eval_stt: true
+eval_only:
+
+enhance_only:
+
 
 # Loss related
 loss:
@@ -85,7 +87,7 @@ ddp:
 
 checkpoint: true
 checkpoint_file: checkpoint.th
-continue_from: /home/user114/yunsik/mmtmse/checkpoint/bafnet
+continue_from:
 samples_dir: samples
 log_dir: tensorbd
 
@@ -110,13 +112,6 @@ hydra:
         mode: w
         formatter: colorlog
         filename: trainer.log
-      console:
-        class: logging.StreamHandler
-        formatter: colorlog
-        stream: ext://sys.stderr
-
-  hydra_logging:
-    handlers:
       console:
         class: logging.StreamHandler
         formatter: colorlog

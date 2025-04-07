@@ -1,4 +1,3 @@
-import math
 import torch
 import torch.nn.functional as F
 
@@ -44,6 +43,32 @@ def l1_loss(x, y, mask=None):
         return F.l1_loss(x * mask, y * mask)
     return F.l1_loss(x, y)
 
+def si_snr_loss(x, y, mask=None):
+    if mask is not None:
+        x = x * mask
+        y = y * mask
+    
+    if x.dim() == 3:
+        x = x.squeeze(1)
+        y = y.squeeze(1)
+    
+    x_y_norm = torch.sum(x * y, dim=-1, keepdim=True)
+    y_y_norm = torch.sum(y ** 2, dim=-1, keepdim=True)
+    
+    target = x_y_norm / (y_y_norm + 1e-9) * y
+    noise = x - target
+    
+    target_norm = torch.sum(target ** 2, dim=-1, keepdim=True)
+    noise_norm = torch.sum(noise ** 2, dim=-1, keepdim=True)
+    
+    snr = 10 * torch.log10(target_norm / (noise_norm + 1e-9) + 1e-9)
+    
+    batch_size = x.size(0)
+    
+    if mask is not None:
+        return -torch.sum(snr) / batch_size
+    return -torch.mean(snr)
+    
 def squeeze_to_2d(x):
     """Squeeze tensor to 2D.
     Args:
@@ -224,6 +249,11 @@ class CompositeLoss(torch.nn.Module):
                 **args.multistftloss
             )
 
+        if 'sisnrloss' in args:
+            self.loss_dict['sisnr_loss'] = si_snr_loss         
+            self.loss_weight['sisnr_loss'] = args.sisnrloss
+
+            
     def forward(self, x, y, mask=None):
         loss_all = 0
         loss_dict = {}

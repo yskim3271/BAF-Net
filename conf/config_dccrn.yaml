@@ -40,7 +40,7 @@ valid_noise:
 
 # noise augmentation for test
 test_noise:
-  snr_step: [-20, -10, 0, 10, 15]
+  snr_step: [0]
   reverb_proportion: 0.5
   target_dB_FS: -25
   target_dB_FS_floating_value: 0
@@ -49,11 +49,9 @@ test_noise:
 
 batch_size: 32
 batch_size_valid: 1
-epochs: 200
+epochs: 100
 
-# Evaluation only
-eval_only: true
-eval_every: 200  # compute test metrics every so epochs
+eval_every: 100  # compute test metrics every so epochs
 eval_stt: true
 
 # Loss related
@@ -84,7 +82,7 @@ ddp:
 
 checkpoint: true
 checkpoint_file: checkpoint.th
-continue_from: /home/user114/yunsik/mmtmse/checkpoint/dccrn
+continue_from: 
 samples_dir: samples
 log_dir: tensorbd
 
@@ -109,13 +107,6 @@ hydra:
         mode: w
         formatter: colorlog
         filename: trainer.log
-      console:
-        class: logging.StreamHandler
-        formatter: colorlog
-        stream: ext://sys.stderr
-
-  hydra_logging:
-    handlers:
       console:
         class: logging.StreamHandler
         formatter: colorlog

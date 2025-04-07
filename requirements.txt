@@ -1,0 +1,7 @@
+hydra-colorlog==1.2.0
+hydra-core==1.3.2
+librosa==0.10.1
+nlptutti==0.0.0.8
+numpy>=1.26.0
+pesq==0.0.4
+tensorboard>=2.15.0

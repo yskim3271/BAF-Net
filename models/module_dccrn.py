@@ -1,12 +1,8 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import time
 import torch.nn.functional as F
 from scipy.signal import get_window
-import matplotlib.pylab as plt
-from pesq import pesq
-from pystoi import stoi
 
 
 ############################################################################
@@ -577,99 +573,3 @@ def hann_window(win_samp):
     tmp = np.arange(1, win_samp + 1, 1.0, dtype=np.float64)
     window = 0.5 - 0.5 * np.cos((2.0 * np.pi * tmp) / (win_samp + 1))
     return np.float32(window)
-
-
-def fig2np(fig):
-    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    return data
-
-
-def plot_spectrogram_to_numpy(input_wav, fs, n_fft, n_overlap, win, mode, clim, label):
-    # cuda to cpu
-    input_wav = input_wav.cpu().detach().numpy()
-
-    fig, ax = plt.subplots(figsize=(12, 3))
-
-    if mode == 'phase':
-        pxx, freq, t, cax = plt.specgram(input_wav, NFFT=int(n_fft), Fs=int(fs), window=win, noverlap=n_overlap, cmap='jet',
-                                         mode=mode)
-    else:
-        pxx, freq, t, cax = plt.specgram(input_wav, NFFT=int(n_fft), Fs=int(fs), window=win, noverlap=n_overlap, cmap='jet')
-
-    plt.xlabel('Time (s)')
-    plt.ylabel('Frequency (Hz)')
-    plt.tight_layout()
-    plt.clim(clim)
-
-    if label is None:
-        fig.colorbar(cax)
-    else:
-        fig.colorbar(cax, label=label)
-
-    fig.canvas.draw()
-    data = fig2np(fig)
-    plt.close()
-    return data
-
-
-def plot_mask_to_numpy(mask, fs, n_fft, n_overlap, win, clim1, clim2, cmap):
-    frame_num = mask.shape[0]
-    shift_length = n_overlap
-    frame_length = n_fft
-    signal_length = frame_num * shift_length + frame_length
-
-    xt = np.arange(0, np.floor(10 * signal_length / fs) / 10, step=0.5) / (signal_length / fs) * frame_num + 1e-8
-    yt = (n_fft / 2) / (fs / 1000 / 2) * np.arange(0, (fs / 1000 / 2) + 1)
-
-    fig, ax = plt.subplots(figsize=(12, 3))
-    im = ax.imshow(np.transpose(mask), aspect='auto', origin='lower', interpolation='none', cmap=cmap)
-
-    plt.xlabel('Time (s)')
-    plt.ylabel('Frequency (kHz)')
-    plt.xticks(xt, np.arange(0, np.floor(10 * (signal_length / fs)) / 10, step=0.5))
-    plt.yticks(yt, np.int16(np.linspace(0, int((fs / 1000) / 2), len(yt))))
-    plt.tight_layout()
-    plt.colorbar(im, ax=ax)
-    im.set_clim(clim1, clim2)
-
-    fig.canvas.draw()
-    data = fig2np(fig)
-    plt.close()
-    return data
-
-
-def plot_error_to_numpy(estimated, target, fs, n_fft, n_overlap, win, mode, clim1, clim2, label):
-    fig, ax = plt.subplots(figsize=(12, 3))
-    if mode == None:
-        pxx1, freq, t, cax = plt.specgram(estimated, NFFT=n_fft, Fs=int(fs), window=win, noverlap=n_overlap, cmap='jet')
-        pxx2, freq, t, cax = plt.specgram(target, NFFT=n_fft, Fs=int(fs), window=win, noverlap=n_overlap, cmap='jet')
-        im = ax.imshow(10 * np.log10(pxx1) - 10 * np.log10(pxx2), aspect='auto', origin='lower', interpolation='none',
-                       cmap='jet')
-    else:
-        pxx1, freq, t, cax = plt.specgram(estimated, NFFT=n_fft, Fs=int(fs), window=win, noverlap=n_overlap, cmap='jet',
-                                          mode=mode)
-        pxx2, freq, t, cax = plt.specgram(target, NFFT=n_fft, Fs=int(fs), window=win, noverlap=n_overlap, cmap='jet',
-                                          mode=mode)
-        im = ax.imshow(pxx1 - pxx2, aspect='auto', origin='lower', interpolation='none', cmap='jet')
-
-    frame_num = pxx1.shape[1]
-    shift_length = n_overlap
-    frame_length = n_fft
-    signal_length = frame_num * shift_length + frame_length
-
-    xt = np.arange(0, np.floor(10 * (signal_length / fs)) / 10, step=0.5) / (signal_length / fs) * frame_num
-    yt = (n_fft / 2) / (fs / 1000 / 2) * np.arange(0, (fs / 1000 / 2) + 1)
-
-    plt.xlabel('Time (s)')
-    plt.ylabel('Frequency (kHz)')
-    plt.xticks(xt, np.arange(0, np.floor(10 * (signal_length / fs)) / 10, step=0.5))
-    plt.yticks(yt, np.int16(np.linspace(0, int((fs / 1000) / 2), len(yt))))
-    plt.tight_layout()
-    plt.colorbar(im, ax=ax, label=label)
-    im.set_clim(clim1, clim2)
-
-    fig.canvas.draw()
-    data = fig2np(fig)
-    plt.close()
-    return data
