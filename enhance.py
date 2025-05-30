@@ -30,7 +30,7 @@ def write(wav, filename, sr=16_000):
     wav = wav / max(wav.abs().max().item(), 1)
     torchaudio.save(filename, wav.cpu(), sr)
 
-def enhance_multiple_snr(args, model, dataloader_list, epoch=None, local_out_dir=None):
+def enhance_multiple_snr(args, model, dataloader_list, logger=None, epoch=None, local_out_dir=None):
     for snr, data_loader in dataloader_list.items():
         enhance(args, model, data_loader, logger, snr, epoch, local_out_dir)
 

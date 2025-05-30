@@ -1,8 +1,29 @@
 import torch
 import torch.nn as nn
-from models.module_dccrn import ConvSTFT, ConviSTFT, normal_energy
+from models.stft import ConvSTFT, ConviSTFT
 from models.seconformer import seconformer
 from models.dccrn import dccrn
+
+def normal_energy(spec: torch.Tensor, eps: float = 1e-8):
+    """
+    Normalize the energy of the spectrogram.
+    
+    Args:
+        spec (torch.Tensor): Input spectrogram tensor.
+        eps (float): Small value to avoid division by zero.
+    
+    Returns:
+        torch.Tensor: Normalized spectrogram.
+        torch.Tensor: Energy of the input spectrogram.
+    """
+    real = spec[:, 0, :, :]  # [B, F, T]
+    imag = spec[:, 1, :, :]  # [B, F, T]
+    
+    power = real**2 + imag**2            # [B, F, T]
+    energy = power.mean(dim=[1,2], keepdim=True).sqrt()  
+    spec_norm = spec / (energy + eps)
+
+    return spec_norm, energy
 
 class bafnet(torch.nn.Module):
     def __init__(self, 

@@ -10,7 +10,7 @@ class fcnlf(nn.Module):
     """ Late Fusion Fully Convolutional Network (FCN_LF) """
     def __init__(self,
                  a_depth: int = 6,
-                 a_channel: int = 33,
+                 a_channels: int = 33,
                  a_kernel_size: int = 55,
                  b_channels: list = [1, 3, 5, 1],
                  b_kernel_size: list = [257, 1, 15, 513],
@@ -20,7 +20,7 @@ class fcnlf(nn.Module):
         super().__init__()
         
         self.a_depth = a_depth
-        self.a_channels = a_channel
+        self.a_channelss = a_channels
         self.a_kernel_size = a_kernel_size
         self.b_channels = b_channels
         self.b_kernel_size = b_kernel_size
@@ -31,8 +31,8 @@ class fcnlf(nn.Module):
         for i in range(a_depth):
             fcn_a.append(
                 nn.Conv1d(
-                    1 if i == 0 else a_channel,
-                    a_channel,
+                    1 if i == 0 else a_channels,
+                    a_channels,
                     kernel_size=a_kernel_size,
                     padding=(a_kernel_size - 1) // 2
                 )
@@ -40,7 +40,7 @@ class fcnlf(nn.Module):
             fcn_a.append(nn.ReLU())
         
         fcn_a.append(
-            nn.Conv1d(a_channel, 1, kernel_size=a_kernel_size, padding=(a_kernel_size - 1) // 2)
+            nn.Conv1d(a_channels, 1, kernel_size=a_kernel_size, padding=(a_kernel_size - 1) // 2)
         )
         self.fcn_a = nn.Sequential(*fcn_a)
         

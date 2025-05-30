@@ -4,8 +4,160 @@ dccrn: Deep complex convolution recurrent network
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.module_dccrn import ConvSTFT, ConviSTFT, \
-    ComplexConv2d, ComplexConvTranspose2d, NavieComplexLSTM, complex_cat, ComplexBatchNorm
+from models.stft import ConvSTFT, ConviSTFT, complex_cat
+
+
+
+def normal_energy(spec: torch.Tensor, eps: float = 1e-8):
+    
+    real = spec[:, :spec.shape[1]//2, :]  # [B, F, T]
+    imag = spec[:, spec.shape[1]//2:, :]  # [B, F, T]
+    power = real**2 + imag**2            # [B, F, T]
+    energy = power.mean(dim=[1,2], keepdim=True).sqrt()  
+    spec_norm = spec / (energy + eps)
+
+    return spec_norm, energy
+
+
+class ComplexConv2d(nn.Module):
+
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel_size=(1, 1),
+            stride=(1, 1),
+            padding=(0, 0),
+            dilation=1,
+            groups=1,
+            causal=True,
+            complex_axis=1,
+    ):
+        '''
+            in_channels: real+imag
+            out_channels: real+imag
+            kernel_size : input [B,C,D,T] kernel size in [D,T]
+            padding : input [B,C,D,T] padding in [D,T]
+            causal: if causal, will padding time dimension's left side,
+                    otherwise both
+
+        '''
+        super(ComplexConv2d, self).__init__()
+        self.in_channels = in_channels // 2
+        self.out_channels = out_channels // 2
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.causal = causal
+        self.groups = groups
+        self.dilation = dilation
+        self.complex_axis = complex_axis
+        self.real_conv = nn.Conv2d(self.in_channels, self.out_channels, kernel_size, self.stride,
+                                   padding=[self.padding[0], 0], dilation=self.dilation, groups=self.groups)
+        self.imag_conv = nn.Conv2d(self.in_channels, self.out_channels, kernel_size, self.stride,
+                                   padding=[self.padding[0], 0], dilation=self.dilation, groups=self.groups)
+
+        nn.init.normal_(self.real_conv.weight.data, std=0.05)
+        nn.init.normal_(self.imag_conv.weight.data, std=0.05)
+        nn.init.constant_(self.real_conv.bias, 0.)
+        nn.init.constant_(self.imag_conv.bias, 0.)
+
+    def forward(self, inputs):
+        if self.padding[1] != 0 and self.causal:
+            inputs = F.pad(inputs, [self.padding[1], 0, 0, 0])
+        else:
+            inputs = F.pad(inputs, [self.padding[1], self.padding[1], 0, 0])
+
+        if self.complex_axis == 0:
+            real = self.real_conv(inputs)
+            imag = self.imag_conv(inputs)
+            real2real, imag2real = torch.chunk(real, 2, self.complex_axis)
+            real2imag, imag2imag = torch.chunk(imag, 2, self.complex_axis)
+
+        else:
+            if isinstance(inputs, torch.Tensor):
+                real, imag = torch.chunk(inputs, 2, self.complex_axis)
+
+            real2real = self.real_conv(real, )
+            imag2imag = self.imag_conv(imag, )
+
+            real2imag = self.imag_conv(real)
+            imag2real = self.real_conv(imag)
+
+        real = real2real - imag2imag
+        imag = real2imag + imag2real
+        out = torch.cat([real, imag], self.complex_axis)
+
+        return out
+
+
+class ComplexConvTranspose2d(nn.Module):
+
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel_size=(1, 1),
+            stride=(1, 1),
+            padding=(0, 0),
+            output_padding=(0, 0),
+            causal=False,
+            complex_axis=1,
+            groups=1
+    ):
+        '''
+            in_channels: real+imag
+            out_channels: real+imag
+        '''
+        super(ComplexConvTranspose2d, self).__init__()
+        self.in_channels = in_channels // 2
+        self.out_channels = out_channels // 2
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.output_padding = output_padding
+        self.groups = groups
+
+        self.real_conv = nn.ConvTranspose2d(self.in_channels, self.out_channels, kernel_size, self.stride,
+                                            padding=self.padding, output_padding=output_padding, groups=self.groups)
+        self.imag_conv = nn.ConvTranspose2d(self.in_channels, self.out_channels, kernel_size, self.stride,
+                                            padding=self.padding, output_padding=output_padding, groups=self.groups)
+        self.complex_axis = complex_axis
+
+        nn.init.normal_(self.real_conv.weight, std=0.05)
+        nn.init.normal_(self.imag_conv.weight, std=0.05)
+        nn.init.constant_(self.real_conv.bias, 0.)
+        nn.init.constant_(self.imag_conv.bias, 0.)
+
+    def forward(self, inputs):
+
+        if isinstance(inputs, torch.Tensor):
+            real, imag = torch.chunk(inputs, 2, self.complex_axis)
+        elif isinstance(inputs, tuple) or isinstance(inputs, list):
+            real = inputs[0]
+            imag = inputs[1]
+        if self.complex_axis == 0:
+            real = self.real_conv(inputs)
+            imag = self.imag_conv(inputs)
+            real2real, imag2real = torch.chunk(real, 2, self.complex_axis)
+            real2imag, imag2imag = torch.chunk(imag, 2, self.complex_axis)
+
+        else:
+            if isinstance(inputs, torch.Tensor):
+                real, imag = torch.chunk(inputs, 2, self.complex_axis)
+
+            real2real = self.real_conv(real, )
+            imag2imag = self.imag_conv(imag, )
+
+            real2imag = self.imag_conv(real)
+            imag2real = self.real_conv(imag)
+
+        real = real2real - imag2imag
+        imag = real2imag + imag2real
+        out = torch.cat([real, imag], self.complex_axis)
+
+        return out
+
 
 
 class dccrn(nn.Module):
@@ -18,8 +170,6 @@ class dccrn(nn.Module):
             win_inc=100,
             fft_len=512,
             win_type='hann',
-            use_clstm=True,
-            use_cbn=False,
             kernel_size=5,
             kernel_num=[16, 32, 64, 128, 256, 256]
     ):
@@ -46,7 +196,6 @@ class dccrn(nn.Module):
         self.hidden_layers = rnn_layers
         self.kernel_size = kernel_size
         self.kernel_num = [2] + kernel_num
-        self.use_clstm = use_clstm
 
         bidirectional = False
         fac = 2 if bidirectional else 1
@@ -68,36 +217,21 @@ class dccrn(nn.Module):
                         stride=(2, 1),
                         padding=(2, 1)
                     ),
-                    nn.BatchNorm2d(self.kernel_num[idx + 1]) if not use_cbn else ComplexBatchNorm(
-                        self.kernel_num[idx + 1]),
+                    nn.BatchNorm2d(self.kernel_num[idx + 1]),
                     nn.PReLU()
                 )
             )
         hidden_dim = self.fft_len // (2 ** (len(self.kernel_num)))
 
-        if self.use_clstm:
-            rnns = []
-            for idx in range(rnn_layers):
-                rnns.append(
-                    NavieComplexLSTM(
-                        input_size=hidden_dim * self.kernel_num[-1] if idx == 0 else self.rnn_units,
-                        hidden_size=self.rnn_units,
-                        bidirectional=bidirectional,
-                        batch_first=False,
-                        projection_dim=hidden_dim * self.kernel_num[-1] if idx == rnn_layers - 1 else None,
-                    )
-                )
-                self.enhance = nn.Sequential(*rnns)
-        else:
-            self.enhance = nn.LSTM(
-                input_size=hidden_dim * self.kernel_num[-1],
-                hidden_size=self.rnn_units,
-                num_layers=2,
-                dropout=0.0,
-                bidirectional=bidirectional,
-                batch_first=False
-            )
-            self.tranform = nn.Linear(self.rnn_units * fac, hidden_dim * self.kernel_num[-1])
+        self.enhance = nn.LSTM(
+            input_size=hidden_dim * self.kernel_num[-1],
+            hidden_size=self.rnn_units,
+            num_layers=2,
+            dropout=0.0,
+            bidirectional=bidirectional,
+            batch_first=False
+        )
+        self.tranform = nn.Linear(self.rnn_units * fac, hidden_dim * self.kernel_num[-1])
 
         for idx in range(len(self.kernel_num) - 1, 0, -1):
             if idx != 1:
@@ -111,8 +245,7 @@ class dccrn(nn.Module):
                             padding=(2, 0),
                             output_padding=(1, 0)
                         ),
-                        nn.BatchNorm2d(self.kernel_num[idx - 1]) if not use_cbn else ComplexBatchNorm(
-                            self.kernel_num[idx - 1]),
+                        nn.BatchNorm2d(self.kernel_num[idx - 1]),
                         nn.PReLU()
                     )
                 )

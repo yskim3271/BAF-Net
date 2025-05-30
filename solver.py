@@ -252,7 +252,7 @@ class Solver(object):
                             ev_metric = evaluate(self.args, self.model, self.ev_loader_list, epoch, self.logger)
 
                             self.logger.info('Enhance and save samples...')
-                            enhance_multiple_snr(self.args, self.model, self.tt_loader_list, epoch, self.samples_dir)
+                            enhance_multiple_snr(self.args, self.model, self.tt_loader_list, self.logger, epoch, self.samples_dir)
                     
                         for snr, metric_item in ev_metric.items():
                             for k, v in metric_item.items():

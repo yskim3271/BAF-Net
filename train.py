@@ -73,6 +73,11 @@ def run(rank, world_size, args):
     # Set device
     device = torch.device(f'cuda:{rank}')
     
+    if not hasattr(args, 'model'):
+        if rank == 0:
+            logger.error("Model configuration not found in args")
+        sys.exit(1)
+
     model_args = args.model
     model_name = model_args.model_name
     
@@ -107,6 +112,8 @@ def run(rank, world_size, args):
     rir_valid_list = parse_list(args.dset.rir_dir, args.dset.rir_valid)
     rir_test_list = parse_list(args.dset.rir_dir, args.dset.rir_test)
     
+    tm_only = args.model.input_type == "tm"
+        
     # Set up dataset and dataloader
     tr_dataset = TAPSnoisytdataset(
         datapair_list=trainset,
@@ -120,7 +127,8 @@ def run(rank, world_size, args):
         sampling_rate=args.sampling_rate,
         segment=args.segment, 
         stride=args.stride, 
-        shift=args.shift
+        shift=args.shift,
+        tm_only=tm_only
     )
     
     # Set up distributed sampler
@@ -146,6 +154,7 @@ def run(rank, world_size, args):
         silence_length=args.valid_noise.silence_length,
         deterministic=args.valid_noise.deterministic,
         sampling_rate=args.sampling_rate,
+        tm_only=tm_only,
     )
     va_sampler = DistributedSampler(va_dataset, shuffle=False) if world_size > 1 else None
     va_loader = DataLoader(
@@ -173,7 +182,8 @@ def run(rank, world_size, args):
             deterministic=args.test_noise.deterministic,
             sampling_rate=args.sampling_rate,
             with_id=True,
-            with_text=True
+            with_text=True,
+            tm_only=tm_only,
         )
     
         ev_loader = DataLoader(

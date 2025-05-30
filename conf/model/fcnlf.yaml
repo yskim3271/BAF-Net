@@ -4,7 +4,7 @@ input_type: am+tm
 param:
   a_depth: 6
   a_channels: 33 
-  a_kenel_size: 55
+  a_kernel_size: 55
   b_channels: [1, 3, 5, 1]
   b_kernel_size: [257, 1, 15, 513]
   lf_channels: 15

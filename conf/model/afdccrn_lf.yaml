@@ -1,0 +1,17 @@
+model_name: afdccrn_lf
+input_type: am+tm
+
+param:
+  window_size: 512
+  hop_size: 256
+  fft_length: 512
+  win_type: hann
+  channels: [16, 32, 64, 128, 256]
+  dcblock_depth: 4
+  dcblock_growth_rate: 8
+  stride: [2, 1]
+  kernel_size: [4, 1]
+  lstm_groups: 2
+  lstm_layers: 2
+  lstm_bidirectional: true
+  lstm_rearrange: false

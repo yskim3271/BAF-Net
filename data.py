@@ -46,6 +46,7 @@ class TAPSnoisytdataset:
                  with_id=False,
                  with_text=False,
                  deterministic=False,
+                 tm_only=False,
                  ):
         # Initialize variables with constructor arguments
         self.datapair_list = datapair_list
@@ -63,11 +64,11 @@ class TAPSnoisytdataset:
         self.with_id = with_id
         self.with_text = with_text
         self.deterministic = deterministic
+        self.tm_only = tm_only
         assert self.with_id if self.with_text else True, "with_id must be True if with_text is True"
         
         # Parse the SNR range into a list of possible SNR values
         self.snr_list = self._parse_snr_range(snr_range)
-        
         # Check that the reverb proportion is between 0 and 1
         assert 0 <= reverb_proportion <= 1, "reverberation proportion should be in [0, 1]"
         self.reverb_proportion = reverb_proportion
@@ -190,9 +191,20 @@ class TAPSnoisytdataset:
             tm = tm[..., offset:offset+t]
         
         am = torch.tensor(am, dtype=torch.float32)
-        tm = torch.tensor(tm, dtype=torch.float32)
+        tm = torch.tensor(tm, dtype=torch.float32)            
+        
         # Keep a reference to the original clean am
         clean_am = am.clone()
+        
+        # if tm_only is True, do not add noise or reverb
+        if self.tm_only:
+            dummy_am = torch.zeros_like(am)
+            if self.with_text:
+                return tm, dummy_am, clean_am, id, text
+            elif self.with_id:
+                return tm, dummy_am, clean_am, id
+            else:
+                return tm, dummy_am, clean_am
         
         # Select noise for the length of am
         noise = self._select_noise(am.shape[-1], index)

@@ -131,7 +131,8 @@ class seconformer(nn.Module):
             encode += [
                 nn.Conv1d(chin, hidden, kernel_size, stride),
                 nn.ReLU(),
-                nn.Conv1d(hidden, hidden * ch_scale, 1), nn.GLU(1),
+                nn.Conv1d(hidden, hidden * ch_scale, 1), 
+                nn.GLU(1),
             ]
             self.encoder.append(nn.Sequential(*encode))
 

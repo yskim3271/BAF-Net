@@ -1,6 +1,5 @@
 defaults:
   - _self_
-  - model: seconformer_tm
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
@@ -39,8 +38,9 @@ valid_noise:
   deterministic: true
 
 # noise augmentation for test
+# Careful: To many snr steps will cause Out of Memory
 test_noise:
-  snr_step: [-20, -10, 0, 10, 15, 20]
+  snr_step: [-20, -10, 0, 10, 15]
   reverb_proportion: 0.5
   target_dB_FS: -25
   target_dB_FS_floating_value: 0
@@ -93,9 +93,6 @@ seed: 2039
 hydra:
   run:
     dir: ./outputs/${now:%Y-%m-%d_%H-%M-%S}
-  sweep:
-    dir: ./outputs
-    subdir: ${hydra.job.override_dirname}
 
   job:
     chdir: true
