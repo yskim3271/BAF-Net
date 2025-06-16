@@ -4,11 +4,11 @@ defaults:
   - override hydra/hydra_logging: colorlog
 
 dset:
-  noise_dir: /home/user114/yunsik/dataset/datasets_fullband/noise_fullband_resampled 
+  noise_dir: ../datasets_fullband/noise_fullband_resampled # Path to noise directory
   noise_train: dataset/noise_train.txt 
   noise_valid: dataset/noise_dev.txt 
   noise_test: dataset/noise_test.txt
-  rir_dir: /home/user114/yunsik/dataset/datasets_fullband/impulse_responses
+  rir_dir: ../datasets_fullband/impulse_responses # Path to RIR directory
   rir_train: dataset/rir_train.txt 
   rir_valid: dataset/rir_dev.txt
   rir_test: dataset/rir_test.txt
