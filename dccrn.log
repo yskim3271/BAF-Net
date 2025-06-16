@@ -1,0 +1,17 @@
+2025-06-16 10:19:26,827 - __main__ - INFO - Model: DCCRN
+2025-06-16 10:19:26,827 - __main__ - INFO - Input type: am
+2025-06-16 10:19:26,827 - __main__ - INFO - Checkpoint: checkpoint/dccrn
+2025-06-16 10:19:26,827 - __main__ - INFO - Device: cuda
+2025-06-16 10:27:54,601 - __main__ - INFO - Evaluate on -20dB | 400/2000 | 0.8 it/sec
+2025-06-16 10:36:50,193 - __main__ - INFO - Evaluate on -20dB | 800/2000 | 0.8 it/sec
+2025-06-16 10:45:39,599 - __main__ - INFO - Evaluate on -20dB | 1200/2000 | 0.8 it/sec
+2025-06-16 10:53:56,732 - __main__ - INFO - Evaluate on -20dB | 1600/2000 | 0.8 it/sec
+2025-06-16 11:02:40,587 - __main__ - INFO - Evaluate on -20dB | 2000/2000 | 0.8 it/sec
+2025-06-16 11:43:12,109 - __main__ - INFO - Model: DCCRN
+2025-06-16 11:43:12,109 - __main__ - INFO - Input type: am
+2025-06-16 11:43:12,109 - __main__ - INFO - Checkpoint: checkpoint/dccrn
+2025-06-16 11:43:12,109 - __main__ - INFO - Device: cuda
+2025-06-16 11:51:36,613 - __main__ - INFO - Evaluate on -20dB | 400/2000 | 0.8 it/sec
+2025-06-16 12:00:30,961 - __main__ - INFO - Evaluate on -20dB | 800/2000 | 0.8 it/sec
+2025-06-16 12:09:22,777 - __main__ - INFO - Evaluate on -20dB | 1200/2000 | 0.8 it/sec
+2025-06-16 12:17:44,723 - __main__ - INFO - Evaluate on -20dB | 1600/2000 | 0.8 it/sec

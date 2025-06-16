@@ -1,15 +1,24 @@
-# 
+# BAF-Net: Modality-Specific Speech Enhancement and Noise-Adaptive Fusion for Acoustic and Body-Conduction Microphone Framework
 
-<a href="https://www.python.org/"><img alt="Python" src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white"></a>
-<a href="https://pytorch.org"><img alt="PyTorch" src="https://img.shields.io/badge/-Pytorch 2.2-ee4c2c?style=for-the-badge&logo=pytorch&logoColor=white"></a>
-<a href="https://hydra.cc/"><img alt="Config: hydra" src="https://img.shields.io/badge/-🐉 hydra 1.3-89b8cd?style=for-the-badge&logo=hydra&logoColor=white"></a>
-<a href="https://huggingface.co/datasets"><img alt="HuggingFace Datasets" src="https://img.shields.io/badge/datasets 2.19-yellow?style=for-the-badge&logo=huggingface&logoColor=white"></a>
-
-This is an official PyTorch implementataion of paper "", which has been submitted to INTERSPEECH 2025. 
+This is an official PyTorch implementataion of paper "Modality-Specific Speech Enhancement and Noise-Adaptive Fusion for Acoustic and Body-Conduction Microphone Framework", which has been accepted to INTERSPEECH 2025. 
 
 ## Dataset download
-The BAF-Net is trained and evaluated with Throat-Acoustic Parining Speech (TAPS) Dataset. The dataset can be accessed at Huggingface.
+The BAF-Net is trained and evaluated with Throat-Acoustic Parining Speech (TAPS) Dataset. The dataset can be accessed at [Huggingface](https://huggingface.co/datasets/yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset).
 
+## Noise dataset download
+The noise dataset used for data augmentation during training is the ICASSP 2023 Deep Noise Suppression Challenge dataset, which can be downloaded from [here](https://github.com/microsoft/DNS-Challenge). This dataset is used to add realistic noise to clean speech samples for robust model training.
+
+The dataset splits are defined in the following files:
+- `dataset/noise_train.txt`: Training set noise files
+- `dataset/noise_dev.txt`: Development set noise files  
+- `dataset/noise_test.txt`: Test set noise files
+
+Similarly, the Room Impulse Response (RIR) dataset splits are defined in:
+- `dataset/rir_train.txt`: Training set RIR files
+- `dataset/rir_dev.txt`: Development set RIR files
+- `dataset/rir_test.txt`: Test set RIR files
+
+These predefined splits ensure reproducibility of the experimental results.
 
 ## Requirements
 `pip install -r requirements.txt`
@@ -59,33 +68,62 @@ train.py +model=seconformer_tm
 train.py +model=seconformer_am
 ```
 
-
-
-
 ### Multi-modal models
 - [Fully Convolutional Network (FCN)](https://arxiv.org/abs/1911.09847)
 ```
 # Training FCN version of early fusion
-train.py +model=fcnef
+train.py +model=fcn_ef
 
 # Training FCN version of late fusion
-train.py +model=fcnlf
+train.py +model=fcn_lf
 ```
 
-- [Attention-based Fusion Densely Connected Convolutional Recurrent Network (AFDC-CRN)](https://ieeexplore.ieee.org/document/9746374/)
+- [Attention-based Fusion Densely Connected Convolutional Recurrent Network (Attention-DC-CRN)](https://ieeexplore.ieee.org/document/9746374/)
 ```
-# Training AFDC-CRN version of early fusion
-train.py +model=afdccrnef
+# Training Attention-DC-CRN version of early fusion
+train.py +model=afdccrn_ef
 
-# Training AFDC-CRN version of late fusion
-train.py +model=afdccrnlf
+# Training Attention-DC-CRN version of late fusion
+train.py +model=afdccrn_lf
 ```
 
 ## Evaluate models
-You can evaluate the model performance 
+You can use the `evaluate.py` script to evaluate the performance of BAF-Net and other models. This script computes objective speech quality metrics such as PESQ, STOI, CSIG, CBAK, COVL, and optionally evaluates speech recognition performance (CER, WER) as well.
+
+```bash
+python evaluate.py \
+    --model_config conf/model/MODEL_NAME.yaml \
+    --chkpt_dir outputs/MODEL_NAME \
+    --chkpt_file best.th \
+    --noise_dir PATH_TO_NOISE_DIR \
+    --noise_test dataset/noise_test.txt \
+    --rir_dir PATH_TO_RIR_DIR \
+    --rir_test dataset/rir_test.txt \
+    --snr_step snr_step1 snr_step2 ... \
+    --eval_stt  # Optional STT performance evaluation
+```
+
+The evaluation results are saved to the specified log file, and you can check the performance metrics at various SNR (Signal-to-Noise Ratio) levels.
+
+## Inference
+To generate enhanced speech using trained models, you can use the `enhance.py` script. This script runs the model on noisy test datasets and saves enhanced speech files (.wav) and spectrograms (.png).
+
+```bash
+python enhance.py \
+    --chkpt_dir checkpoint/MODEL_NAME \
+    --chkpt_file best.th \
+    --noise_dir PATH_TO_NOISE_DIR \
+    --noise_test dataset/noise_test.txt \
+    --rir_dir PATH_TO_RIR_DIR \
+    --rir_test dataset/rir_test.txt \
+    --snr 0 \
+    --output_dir samples/MODEL_NAME
+```
+
+The enhanced speech samples are saved in the `wavs_0dB` folder of the specified output directory, and the corresponding spectrograms are saved in the `mels_0dB` folder. Each sample includes acoustic microphone (AM) input, acoustic microphone output, throat microphone (TM) input, and the model's prediction results.
 
 ## How to cite
+To be added.
 
 ## License
-
 BAF-Net is released under the MIT license as found in the LICENSE file.

@@ -1,4 +1,5 @@
-model_name: afdccrn_lf
+model_lib: attention_dc_crn
+model_class: Attention_DC_CRN_LateFusion
 input_type: am+tm
 
 param:

@@ -1,4 +1,5 @@
-model_name: fcnef
+model_lib: fcn
+model_class: FCN_EarlyFusion
 input_type: am+tm
 
 param:

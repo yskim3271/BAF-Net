@@ -25,7 +25,7 @@ def normal_energy(spec: torch.Tensor, eps: float = 1e-8):
 
     return spec_norm, energy
 
-class bafnet(torch.nn.Module):
+class BAFNet(torch.nn.Module):
     def __init__(self, 
                  depth, 
                  channels, 
@@ -35,7 +35,7 @@ class bafnet(torch.nn.Module):
                  checkpoint_seconformer=None,
                  checkpoint_dccrn=None,
                  ):
-        super(bafnet, self).__init__()
+        super(BAFNet, self).__init__()
         
         self.depth = depth
         self.channels = channels

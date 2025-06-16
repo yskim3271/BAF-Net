@@ -1,4 +1,5 @@
-model_name: fcnlf
+model_lib: fcn
+model_class: FCN_LateFusion
 input_type: am+tm
 
 param:

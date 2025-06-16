@@ -158,9 +158,47 @@ class ComplexConvTranspose2d(nn.Module):
 
         return out
 
+class NavieComplexLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, projection_dim=None, bidirectional=False, batch_first=False):
+        super(NavieComplexLSTM, self).__init__()
 
+        self.input_dim = input_size//2
+        self.rnn_units = hidden_size//2
+        self.real_lstm = nn.LSTM(self.input_dim, self.rnn_units, num_layers=1, bidirectional=bidirectional, batch_first=False)
+        self.imag_lstm = nn.LSTM(self.input_dim, self.rnn_units, num_layers=1, bidirectional=bidirectional, batch_first=False)
+        if bidirectional:
+            bidirectional=2
+        else:
+            bidirectional=1
+        if projection_dim is not None:
+            self.projection_dim = projection_dim//2 
+            self.r_trans = nn.Linear(self.rnn_units*bidirectional, self.projection_dim)
+            self.i_trans = nn.Linear(self.rnn_units*bidirectional, self.projection_dim)
+        else:
+            self.projection_dim = None
 
-class dccrn(nn.Module):
+    def forward(self, inputs):
+        if isinstance(inputs,list):
+            real, imag = inputs 
+        elif isinstance(inputs, torch.Tensor):
+            real, imag = torch.chunk(inputs,-1)
+        r2r_out = self.real_lstm(real)[0]
+        r2i_out = self.imag_lstm(real)[0]
+        i2r_out = self.real_lstm(imag)[0]
+        i2i_out = self.imag_lstm(imag)[0]
+        real_out = r2r_out - i2i_out
+        imag_out = i2r_out + r2i_out 
+        if self.projection_dim is not None:
+            real_out = self.r_trans(real_out)
+            imag_out = self.i_trans(imag_out)
+        #print(real_out.shape,imag_out.shape)
+        return [real_out, imag_out]
+    
+    def flatten_parameters(self):
+        self.imag_lstm.flatten_parameters()
+        self.real_lstm.flatten_parameters()
+
+class DCCRN(nn.Module):
 
     def __init__(
             self,
@@ -171,15 +209,10 @@ class dccrn(nn.Module):
             fft_len=512,
             win_type='hann',
             kernel_size=5,
-            kernel_num=[16, 32, 64, 128, 256, 256]
+            kernel_num=[16, 32, 64, 128, 256, 256],
+            use_clstm=True
     ):
-        '''
-
-            rnn_layers: the number of lstm layers in the crn,
-            rnn_units: for clstm, rnn_units = real+imag
-        '''
-
-        super(dccrn, self).__init__()
+        super(DCCRN, self).__init__()
 
         # for fft
         self.win_len = win_len
@@ -196,6 +229,7 @@ class dccrn(nn.Module):
         self.hidden_layers = rnn_layers
         self.kernel_size = kernel_size
         self.kernel_num = [2] + kernel_num
+        self.use_clstm = use_clstm
 
         bidirectional = False
         fac = 2 if bidirectional else 1
@@ -223,15 +257,29 @@ class dccrn(nn.Module):
             )
         hidden_dim = self.fft_len // (2 ** (len(self.kernel_num)))
 
-        self.enhance = nn.LSTM(
-            input_size=hidden_dim * self.kernel_num[-1],
-            hidden_size=self.rnn_units,
-            num_layers=2,
-            dropout=0.0,
-            bidirectional=bidirectional,
-            batch_first=False
-        )
-        self.tranform = nn.Linear(self.rnn_units * fac, hidden_dim * self.kernel_num[-1])
+        if self.use_clstm: 
+            rnns = []
+            for idx in range(rnn_layers):
+                rnns.append(
+                        NavieComplexLSTM(
+                        input_size= hidden_dim*self.kernel_num[-1] if idx == 0 else self.rnn_units,
+                        hidden_size=self.rnn_units,
+                        bidirectional=bidirectional,
+                        batch_first=False,
+                        projection_dim= hidden_dim*self.kernel_num[-1] if idx == rnn_layers-1 else None,
+                        )
+                    )
+                self.enhance = nn.Sequential(*rnns)
+        else:
+            self.enhance = nn.LSTM(
+                    input_size= hidden_dim*self.kernel_num[-1],
+                    hidden_size=self.rnn_units,
+                    num_layers=2,
+                    dropout=0.0,
+                    bidirectional=bidirectional,
+                    batch_first=False
+            )
+            self.tranform = nn.Linear(self.rnn_units * fac, hidden_dim*self.kernel_num[-1])
 
         for idx in range(len(self.kernel_num) - 1, 0, -1):
             if idx != 1:
@@ -284,12 +332,6 @@ class dccrn(nn.Module):
         spec_phase = spec_phase
         cspecs = torch.stack([real, imag], 1)
         cspecs = cspecs[:, :, 1:]
-        '''
-        means = torch.mean(cspecs, [1,2,3], keepdim=True)
-        std = torch.std(cspecs, [1,2,3], keepdim=True )
-        normed_cspecs = (cspecs-means)/(std+1e-8)
-        out = normed_cspecs
-        '''
 
         out = cspecs
         encoder_out = []
@@ -346,7 +388,6 @@ class dccrn(nn.Module):
         out_spec = torch.cat([real, imag], 1)
         out_wav = self.istft(out_spec)
 
-        # out_wav = torch.squeeze(out_wav, 1)
         out_wav = torch.clamp_(out_wav, -1, 1)
 
         out_len = out_wav.size(-1)

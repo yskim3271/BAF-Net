@@ -249,11 +249,22 @@ class Solver(object):
                         
                         # Temporarily swap model weights with best_state for evaluation
                         with swap_state(self.model.module if self.is_distributed else self.model, self.best_state['model']):
-                            ev_metric = evaluate(self.args, self.model, self.ev_loader_list, epoch, self.logger)
+                            ev_metric = evaluate(
+                                args=self.args, 
+                                model=self.model, 
+                                data_loader_list=self.ev_loader_list, 
+                                logger=self.logger, 
+                                epoch=epoch)
 
                             self.logger.info('Enhance and save samples...')
-                            enhance_multiple_snr(self.args, self.model, self.tt_loader_list, self.logger, epoch, self.samples_dir)
-                    
+                            enhance_multiple_snr(
+                                args=self.args, 
+                                model=self.model, 
+                                data_loader_list=self.tt_loader_list, 
+                                logger=self.logger, 
+                                epoch=epoch, 
+                                local_out_dir=self.samples_dir)
+
                         for snr, metric_item in ev_metric.items():
                             for k, v in metric_item.items():
                                 self.writer.add_scalar(f"test/{snr}/{k}", v, epoch)

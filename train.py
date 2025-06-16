@@ -79,11 +79,12 @@ def run(rank, world_size, args):
         sys.exit(1)
 
     model_args = args.model
-    model_name = model_args.model_name
+    model_lib = model_args.model_lib
+    model_class = model_args.model_class
     
     # import model library
-    module = importlib.import_module("models." + model_name)
-    model_class = getattr(module, model_name)
+    module = importlib.import_module("models." + model_lib)
+    model_class = getattr(module, model_class)
     
     model = model_class(**model_args.param)
     model = model.to(args.device)

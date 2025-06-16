@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from models.stft import ConvSTFT, ConviSTFT
 
 class GatedConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
@@ -132,44 +133,44 @@ class GLSTM(nn.Module):
     ):
         """Grouped LSTM.
 
-        Efficient Sequence Learning with Group Recurrent Networks; Gao et al., 2018 논문을 참고
+        Based on the paper: Efficient Sequence Learning with Group Recurrent Networks; Gao et al., 2018
 
         Args:
-            hidden_size (int): grouped LSTM 레이어 내 모든 LSTM의 총 hidden size  
-                → 각 LSTM의 hidden size = hidden_size // groups
-            groups (int): 그룹의 수 (각 그룹별로 하나의 LSTM이 있음)
-            layers (int): grouped LSTM 레이어의 수
-            bidirectional (bool): 양방향 LSTM(BLSTM) 사용 여부  
-            rearrange (bool): 각 grouped LSTM 레이어 후에 rearrange 연산 적용 여부
+            hidden_size (int): Total hidden size of all LSTMs in the grouped LSTM layer  
+                → Each LSTM's hidden size = hidden_size // groups
+            groups (int): Number of groups (one LSTM per group)
+            layers (int): Number of grouped LSTM layers
+            bidirectional (bool): Whether to use bidirectional LSTM (BLSTM)  
+            rearrange (bool): Whether to apply rearrange operation after each grouped LSTM layer
         """
         super().__init__()
 
-        # hidden_size는 groups로 나누어 떨어져야 함
+        # hidden_size must be divisible by groups
         assert hidden_size % groups == 0, (hidden_size, groups)
-        # 각 그룹별 LSTM에 할당될 hidden size
+        # hidden size allocated to each group's LSTM
         hidden_size_t = hidden_size // groups
         if bidirectional:
-            # 양방향 LSTM인 경우 hidden_size_t는 2로 나누어 떨어져야 함
+            # For bidirectional LSTM, hidden_size_t must be divisible by 2
             assert hidden_size_t % 2 == 0, hidden_size_t
 
         self.groups = groups
         self.layers = layers
         self.rearrange = rearrange
 
-        # 각 레이어별 LSTM과 LayerNorm을 저장하는 ModuleList 생성
+        # Create ModuleList to store LSTM and LayerNorm for each layer
         self.lstm_list = nn.ModuleList()
-        # 레이어 수만큼 LayerNorm을 생성, 각 LayerNorm은 마지막 차원 hidden_size에 적용
+        # Create LayerNorm for each layer, each LayerNorm is applied to the last dimension hidden_size
         self.ln = nn.ModuleList([nn.LayerNorm(hidden_size) for _ in range(layers)])
         
-        # 각 grouped LSTM 레이어 구성
+        # Configure each grouped LSTM layer
         for layer in range(layers):
-            # 각 그룹에 대해 개별 LSTM을 생성해 ModuleList에 저장
+            # Create individual LSTM for each group and store in ModuleList
             self.lstm_list.append(
                 nn.ModuleList(
                     [
                         nn.LSTM(
                             input_size=hidden_size_t, 
-                            # 양방향이면 hidden_size_t // 2, 단방향이면 hidden_size_t가 hidden dimension
+                            # If bidirectional: hidden_size_t // 2, otherwise: hidden_size_t is the hidden dimension
                             hidden_size=hidden_size_t // 2 if bidirectional else hidden_size_t,
                             num_layers=1,
                             batch_first=True,
@@ -184,72 +185,72 @@ class GLSTM(nn.Module):
         """Grouped LSTM forward.
 
         Args:
-            x (torch.Tensor): 입력 텐서, shape: (B, C, T, D)
+            x (torch.Tensor): Input tensor, shape: (B, C, T, D)
         Returns:
-            out (torch.Tensor): 출력 텐서, shape: (B, C, T, D)
+            out (torch.Tensor): Output tensor, shape: (B, C, T, D)
         """
-        # 1. 입력 x: (B, C, T, D)
+        # 1. Input x: (B, C, T, D)
         out = x
 
-        # 2. C와 T 차원 교환 → shape: (B, T, C, D)
+        # 2. Swap C and T dimensions → shape: (B, T, C, D)
         out = out.transpose(1, 2).contiguous()
 
-        # 3. (B, T, C, D)를 3D 텐서로 flatten  
-        #    여기서 C와 D를 병합하여 shape: (B, T, C*D) 가 되어야 함.
-        #    주의: C*D == hidden_size 이어야 함!
+        # 3. Flatten (B, T, C, D) to 3D tensor  
+        #    Here we merge C and D dimensions to get shape: (B, T, C*D)
+        #    Note: C*D must equal hidden_size!
         B, T = out.size(0), out.size(1)
         out = out.view(B, T, -1).contiguous()  # shape: (B, T, hidden_size)
 
-        # 4. 마지막 차원을 groups 개수로 분할 → 각 chunk shape: (B, T, hidden_size // groups)
+        # 4. Split last dimension into groups → each chunk shape: (B, T, hidden_size // groups)
         out = torch.chunk(out, self.groups, dim=-1)
 
-        # 5. 첫 번째 grouped LSTM 레이어 처리  
-        #    각 그룹별로 분할된 텐서를 해당 그룹의 LSTM에 넣어 처리  
-        #    LSTM의 출력은 (B, T, hidden_size_t) (양방향의 경우에도 두 방향 합쳐서 hidden_size_t)
-        #    리스트 컴프리헨션으로 각 그룹 결과를 받아 새 차원(dim=-1)에 쌓음
+        # 5. Process the first grouped LSTM layer  
+        #    Pass each split tensor to its corresponding group's LSTM  
+        #    LSTM output is (B, T, hidden_size_t) (includes both directions if bidirectional)
+        #    Use list comprehension to collect each group's result and stack along a new dimension
         out = torch.stack(
             [self.lstm_list[0][i](out[i])[0] for i in range(self.groups)], dim=-1
-        )  # 결과 shape: (B, T, hidden_size_t, groups)
+        )  # result shape: (B, T, hidden_size_t, groups)
 
-        # 6. 마지막 두 차원(flatten) → shape: (B, T, hidden_size_t * groups) = (B, T, hidden_size)
+        # 6. Flatten last two dimensions → shape: (B, T, hidden_size_t * groups) = (B, T, hidden_size)
         out = torch.flatten(out, start_dim=-2, end_dim=-1)
 
-        # 7. 첫 번째 레이어에 대한 Layer Normalization 적용 → shape 유지: (B, T, hidden_size)
+        # 7. Apply Layer Normalization to first layer → shape preserved: (B, T, hidden_size)
         out = self.ln[0](out)
 
-        # 8. 두 번째 레이어부터 나머지 grouped LSTM 레이어 처리
+        # 8. Process remaining grouped LSTM layers starting from the second layer
         for layer in range(1, self.layers):
-            # (옵션) rearrange 플래그가 True이면 그룹 순서를 재정렬
+            # (Optional) If rearrange flag is True, reorder the groups
             if self.rearrange:
-                # 현재 shape: (B, T, hidden_size)
+                # Current shape: (B, T, hidden_size)
                 # reshape: (B, T, groups, hidden_size // groups)
-                # transpose: 마지막 두 차원 교환 → (B, T, hidden_size // groups, groups)
-                # 최종적으로 다시 flatten하여 (B, T, hidden_size)로 만듦
+                # transpose: Swap last two dimensions → (B, T, hidden_size // groups, groups)
+                # Finally flatten back to (B, T, hidden_size)
                 out = (
                     out.reshape(B, T, self.groups, -1)
                     .transpose(-1, -2)
                     .contiguous()
                     .view(B, T, -1)
                 )
-            # 8-1. 현재 출력을 그룹 별로 분할  
-            #     분할 후 각 텐서의 shape: (B, T, hidden_size // groups)
+            # 8-1. Split current output by groups  
+            #     Each split tensor shape: (B, T, hidden_size // groups)
             out_chunks = torch.chunk(out, self.groups, dim=-1)
 
-            # 8-2. 각 그룹별 LSTM 처리 → 각 출력 shape: (B, T, hidden_size_t)
-            #       모든 그룹의 출력을 이어붙임(dim=-1) → (B, T, hidden_size)
+            # 8-2. Process each group with its LSTM → each output shape: (B, T, hidden_size_t)
+            #      Concatenate all group outputs (dim=-1) → (B, T, hidden_size)
             out = torch.cat(
                 [self.lstm_list[layer][i](out_chunks[i])[0] for i in range(self.groups)],
                 dim=-1,
             )
-            # 8-3. 해당 레이어의 Layer Normalization 적용 → shape 유지: (B, T, hidden_size)
+            # 8-3. Apply Layer Normalization for this layer → shape preserved: (B, T, hidden_size)
             out = self.ln[layer](out)
 
-        # 9. 최종 출력 텐서 shape 변환  
-        #    현재 shape: (B, T, hidden_size)
-        #    원본 입력과 동일한 형식을 위해 다시 4D 텐서로 변환  
-        #    x.size(1)는 원래의 C 차원, 따라서 D는 hidden_size / C가 됨
+        # 9. Transform final output tensor shape  
+        #    Current shape: (B, T, hidden_size)
+        #    Convert back to 4D tensor to match original input format  
+        #    x.size(1) is the original C dimension, so D becomes hidden_size / C
         out = out.view(out.size(0), out.size(1), x.size(1), -1).contiguous()  # shape: (B, T, C, D)
-        # 10. C와 T 차원 다시 교환 → 최종 출력 shape: (B, C, T, D)
+        # 10. Swap C and T dimensions again → final output shape: (B, C, T, D)
         out = out.transpose(1, 2).contiguous()
 
         return out
@@ -345,9 +346,7 @@ class DC_CRN(nn.Module):
         out = x
         skips = []
         for idx, layer in enumerate(self.encoders):
-            # print(f"Encoder {idx} input shape: {out.shape}")
             out = layer(out)
-            # print(f"Encoder {idx} output shape: {out.shape}")
             skip = self.skip_pathway[idx](out)
             skips.insert(0, skip)
         
@@ -357,12 +356,8 @@ class DC_CRN(nn.Module):
         
         for idx in range(len(self.decoders)):
             skip = skips[idx]
-            # print(f"Decoder {idx} skip shape: {skip.shape}")
-            # print(f"Decoder {idx} out shape: {out.shape}")
             out = torch.cat((out, skip), dim=1)
-            # print(f"Decoder {idx} input shape: {out.shape}")
             out = self.decoders[idx](out)
-            # print(f"Decoder {idx} output shape: {out.shape}")
 
         out_real = out[:, 0, :, :]
         out_imag = out[:, 1, :, :]
@@ -382,5 +377,229 @@ class DC_CRN(nn.Module):
         out = torch.stack((out_real, out_imag), dim=1)
                         
         return out
-
     
+
+class Attention_DC_CRN_EarlyFusion(nn.Module):
+    """
+    Early Fusion Model based on Fig 2b.
+    Attention -> DC-CRN
+    """
+    def __init__(self,
+                 window_size=512,
+                 hop_size=256,
+                 fft_length=512,
+                 win_type='hann',
+                 channels=[16, 32, 64, 128, 256],
+                 dcblock_depth=4,
+                 dcblock_growth_rate=8,
+                 stride=(2, 1),
+                 kernel_size=(4, 1),
+                 lstm_groups=2,
+                 lstm_layers=2,
+                 lstm_bidirectional=True,
+                 lstm_rearrange=False,
+    ):
+        super(Attention_DC_CRN_EarlyFusion, self).__init__()
+        self.window_size = window_size
+        self.hop_size = hop_size
+        self.fft_length = fft_length
+        self.win_type = win_type
+        self.channels = channels
+        self.dcblock_depth = dcblock_depth
+        self.dcblock_growth_rate = dcblock_growth_rate
+        self.stride = stride
+        self.kernel_size = kernel_size
+        self.lstm_groups = lstm_groups
+        self.lstm_layers = lstm_layers
+        self.lstm_bidirectional = lstm_bidirectional
+        self.lstm_rearrange = lstm_rearrange
+
+        # Attention Fusion Module
+        self.attention_fusion = AttentionFusion(2)
+
+        # DC-CRN Module
+        self.dc_crn1 = DC_CRN(
+            input_dim=1,
+            channels=self.channels,
+            dcblock_depth=self.dcblock_depth,
+            dcblock_growth_rate=self.dcblock_growth_rate,
+            stride=self.stride,
+            kernel_size=self.kernel_size,
+            lstm_groups=self.lstm_groups,
+            lstm_layers=self.lstm_layers,
+            lstm_bidirectional=self.lstm_bidirectional,
+            lstm_rearrange=self.lstm_rearrange
+        )
+        self.dc_crn2 = DC_CRN(
+            input_dim=1,
+            channels=self.channels,
+            dcblock_depth=self.dcblock_depth,
+            dcblock_growth_rate=self.dcblock_growth_rate,
+            stride=self.stride,
+            kernel_size=self.kernel_size,
+            lstm_groups=self.lstm_groups,
+            lstm_layers=self.lstm_layers,
+            lstm_bidirectional=self.lstm_bidirectional,
+            lstm_rearrange=self.lstm_rearrange
+        )
+
+        self.stft = ConvSTFT(
+            self.window_size,
+            self.hop_size,
+            self.fft_length,
+            self.win_type,
+            'complex',
+            fix=True,
+        )
+        self.istft = ConviSTFT(
+            self.window_size,
+            self.hop_size,
+            self.fft_length,
+            self.win_type,
+            'complex',
+            fix=True,
+        )
+    
+    def forward(self, x1, x2):
+        
+        in_len = x1.size(-1)
+        spec1 = self.stft(x1)
+        spec2 = self.stft(x2)
+        
+        spec1_real = spec1[:, :self.fft_length // 2 + 1, :]
+        spec1_imag = spec1[:, self.fft_length // 2 + 1:, :]
+        
+        spec2_real = spec2[:, :self.fft_length // 2 + 1, :]
+        spec2_imag = spec2[:, self.fft_length // 2 + 1:, :]
+        
+        spec1 = torch.stack((spec1_real, spec1_imag), dim=1)
+        spec2 = torch.stack((spec2_real, spec2_imag), dim=1)
+        
+        spec1 = spec1[:, :, 1:, :]
+        spec2 = spec2[:, :, 1:, :]
+        
+        out1 = self.dc_crn1(spec1)
+        out2 = self.dc_crn2(spec2)
+        
+        out = self.attention_fusion(out1, out2)
+        
+        out_real = out[:, 0, :, :]
+        out_imag = out[:, 1, :, :]
+        
+        out = torch.cat((out_real, out_imag), dim=1)
+        
+        out = self.istft(out)
+        
+        out_len = out.shape[-1]
+        
+        if out_len > in_len:
+            leftover = out_len - in_len 
+            out = out[..., leftover//2:-(leftover//2)]
+        
+        return out
+
+
+class Attention_DC_CRN_LateFusion(nn.Module):
+    """
+    Late Fusion Model based on Fig 2b.
+    Attention -> DC-CRN
+    """
+    def __init__(self,
+                 window_size=512,
+                 hop_size=256,
+                 fft_length=512,
+                 win_type='hann',
+                 channels=[16, 32, 64, 128, 256],
+                 dcblock_depth=4,
+                 dcblock_growth_rate=8,
+                 stride=(2, 1),
+                 kernel_size=(4, 1),
+                 lstm_groups=2,
+                 lstm_layers=2,
+                 lstm_bidirectional=True,
+                 lstm_rearrange=False,
+    ):
+        super(Attention_DC_CRN_LateFusion, self).__init__()
+        self.window_size = window_size
+        self.hop_size = hop_size
+        self.fft_length = fft_length
+        self.win_type = win_type
+        self.channels = channels
+        self.dcblock_depth = dcblock_depth
+        self.dcblock_growth_rate = dcblock_growth_rate
+        self.stride = stride
+        self.kernel_size = kernel_size
+        self.lstm_groups = lstm_groups
+        self.lstm_layers = lstm_layers
+        self.lstm_bidirectional = lstm_bidirectional
+        self.lstm_rearrange = lstm_rearrange
+
+        # Attention Fusion Module
+        self.attention_fusion = AttentionFusion(2)
+
+        # DC-CRN Module
+        self.dc_crn = DC_CRN(
+            input_dim=1,
+            channels=self.channels,
+            dcblock_depth=self.dcblock_depth,
+            dcblock_growth_rate=self.dcblock_growth_rate,
+            stride=self.stride,
+            kernel_size=self.kernel_size,
+            lstm_groups=self.lstm_groups,
+            lstm_layers=self.lstm_layers,
+            lstm_bidirectional=self.lstm_bidirectional,
+            lstm_rearrange=self.lstm_rearrange
+        )
+
+        self.stft = ConvSTFT(
+            self.window_size,
+            self.hop_size,
+            self.fft_length,
+            self.win_type,
+            'complex',
+            fix=True,
+        )
+        self.istft = ConviSTFT(
+            self.window_size,
+            self.hop_size,
+            self.fft_length,
+            self.win_type,
+            'complex',
+            fix=True,
+        )
+    
+    def forward(self, x1, x2):
+        
+        in_len = x1.size(-1)
+        spec1 = self.stft(x1)
+        spec2 = self.stft(x2)
+        
+        spec1_real = spec1[:, :self.fft_length // 2 + 1, :]
+        spec1_imag = spec1[:, self.fft_length // 2 + 1:, :]
+        
+        spec2_real = spec2[:, :self.fft_length // 2 + 1, :]
+        spec2_imag = spec2[:, self.fft_length // 2 + 1:, :]
+        
+        spec1 = torch.stack((spec1_real, spec1_imag), dim=1)
+        spec2 = torch.stack((spec2_real, spec2_imag), dim=1)
+        
+        spec1 = spec1[:, :, 1:, :]
+        spec2 = spec2[:, :, 1:, :]
+        
+        fused = self.attention_fusion(spec1, spec2)
+        out = self.dc_crn(fused)
+        
+        out_real = out[:, 0, :, :]
+        out_imag = out[:, 1, :, :]
+        
+        out = torch.cat((out_real, out_imag), dim=1)
+        
+        out = self.istft(out)
+        
+        out_len = out.shape[-1]
+        
+        if out_len > in_len:
+            leftover = out_len - in_len 
+            out = out[..., leftover//2:-(leftover//2)]
+        
+        return out

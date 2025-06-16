@@ -1,4 +1,5 @@
-model_name: dccrn
+model_lib: dccrn
+model_class: DCCRN
 input_type: am
 
 param:

@@ -87,8 +87,11 @@ def compute_metrics(target_wav, pred_wav, fs=16000):
 
 
 
-def evaluate(args, model, data_loader_list, epoch, logger):
-        
+def evaluate(args, model, data_loader_list, logger, epoch=None):
+    
+
+    prefix = f"Epoch {epoch+1}, " if epoch is not None else ""
+
     metrics = {}
     model.eval()
     for snr, data_loader in data_loader_list.items():
@@ -129,14 +132,121 @@ def evaluate(args, model, data_loader_list, epoch, logger):
             "cbak": cbak,
             "covl": covl
         }
-        logger.info(bold(f"Epoch {epoch+1}, Performance on {snr}dB: PESQ={pesq:.4f}, STOI={stoi:.4f}, CSIG={csig:.4f}, CBAK={cbak:.4f}, COVL={covl:.4f}"))
+        logger.info(bold(f"{prefix}Performance on {snr}dB: PESQ={pesq:.4f}, STOI={stoi:.4f}, CSIG={csig:.4f}, CBAK={cbak:.4f}, COVL={covl:.4f}"))
                 
         if args.eval_stt:
             cer, wer = get_stts(args, logger, enhanced)
             metrics[f'{snr}dB']['cer'] = cer
             metrics[f'{snr}dB']['wer'] = wer
-            logger.info(bold(f"Epoch {epoch+1}, Performance on {snr}dB: CER={cer:.4f}, WER={wer:.4f}"))
+            logger.info(bold(f"{prefix}Performance on {snr}dB: CER={cer:.4f}, WER={wer:.4f}"))
    
     return metrics
 
+if __name__=="__main__":
+    import os
+    import logging
+    import argparse
+    import importlib
+    from data import TAPSnoisytdataset
+    from omegaconf import OmegaConf
+    from torch.utils.data import DataLoader
+    from datasets import load_dataset, concatenate_datasets
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_config", type=str, required=True, help="Path to the model config file.")
+    parser.add_argument("--chkpt_dir", type=str, default='.', help="Path to the checkpoint directory. default is current directory")
+    parser.add_argument("--chkpt_file", type=str, default="best.th", help="Checkpoint file name. default is best.th")
+    parser.add_argument("--noise_dir", type=str, required=True, help="Path to the noise directory.")
+    parser.add_argument("--noise_test", type=str, required=True, help="List of noise files for testing.")
+    parser.add_argument("--rir_dir", type=str, required=True, help="Path to the RIR directory.")
+    parser.add_argument("--rir_test", type=str, required=True, help="List of RIR files for testing.")
+    parser.add_argument("--test_augment_numb", type=int, default=2, help="Number of test augmentations. default is 2")
+    parser.add_argument("--snr_step", nargs="+", type=int, required=True, help="Signal to noise ratio. default is 0 dB")
+    parser.add_argument("--reverb_proportion", type=float, default=0.5, help="Reverberation proportion. default is 0.5")
+    parser.add_argument("--target_dB_FS", type=float, default=-25, help="Target dB FS. default is -25")
+    parser.add_argument("--target_dB_FS_floating_value", type=float, default=0, help="Target dB FS floating value. default is 0")
+    parser.add_argument("--silence_length", type=float, default=0.2, help="Silence length. default is 0.2")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Specifies the device (cuda or cpu).")
+    parser.add_argument("--num_workers", type=int, default=5, help="Number of workers. default is 5")
+    parser.add_argument("--log_file", type=str, default="output.log", help="Log file name. default is output.log")
+    parser.add_argument("--eval_stt", default=False, action="store_true", help="Evaluate STT performance")
+    
+    args = parser.parse_args()
+    chkpt_dir = args.chkpt_dir
+    chkpt_file = args.chkpt_file
+    device = args.device
 
+    log_file = args.log_file
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    
+    logger = logging.getLogger(__name__)
+    
+    conf = OmegaConf.load(args.model_config)
+    conf.model = OmegaConf.load(args.model_config)
+    conf.device = device
+    conf.eval_stt = args.eval_stt
+    
+    model_args = os.path.basename(args.model_config)
+    model_lib = conf.model_lib
+    model_class = conf.model_class
+    module = importlib.import_module("models."+ model_lib)
+    model_class = getattr(module, model_class)
+    
+    model = model_class(**conf.param).to(device)
+    chkpt = torch.load(os.path.join(chkpt_dir, chkpt_file), map_location=device)
+    model.load_state_dict(chkpt['model'])
+    tm_only = conf.input_type == "tm"
+    
+    testset = load_dataset("yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset", split="test")
+    testset_list = [testset] * args.test_augment_numb
+    testset = concatenate_datasets(testset_list)
+    
+    ev_loader_list = {}
+
+    noise_test_list = [os.path.join(args.noise_dir, line.strip()) for line in open(args.noise_test, "r")]
+    rir_test_list = [os.path.join(args.rir_dir, line.strip()) for line in open(args.rir_test, "r")]
+
+    for fixed_snr in args.snr_step:
+        ev_dataset = TAPSnoisytdataset(
+            datapair_list= testset,
+            noise_list= noise_test_list,
+            rir_list= rir_test_list,
+            snr_range= [fixed_snr, fixed_snr],
+            reverb_proportion=args.reverb_proportion,
+            target_dB_FS=args.target_dB_FS,
+            target_dB_FS_floating_value=args.target_dB_FS_floating_value,
+            silence_length=args.silence_length,
+            deterministic=True,
+            sampling_rate=16000,
+            with_id=True,
+            with_text=True,
+            tm_only=tm_only,
+        )
+
+        ev_loader = DataLoader(
+            dataset=ev_dataset,
+            batch_size=1,
+            num_workers=args.num_workers,
+            pin_memory=True
+        )
+
+        ev_loader_list[f"{fixed_snr}"] = ev_loader
+
+    logger.info(f"Model: {model_class.__name__}")
+    logger.info(f"Input type: {conf.input_type}")
+    logger.info(f"Checkpoint: {chkpt_dir}")
+    logger.info(f"Device: {device}")
+    
+    evaluate(args=conf,
+            model=model,
+            data_loader_list=ev_loader_list,
+            logger=logger,
+            epoch=None)
