@@ -32,7 +32,7 @@ Similarly, the Room Impulse Response (RIR) dataset splits are defined in:
 - `dataset/rir_test.txt`: Test set RIR files
 
 These predefined splits ensure reproducibility of the experimental results.
-You need to add the directory paths containing the noise and RIR data to the config.yaml file.
+You need to add the directory paths containing the noise and RIR data to the `config.yaml` file.
 ```yaml
 dset:
   noise_dir: PATH_TO_NOISE_DIR
