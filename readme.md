@@ -1,12 +1,25 @@
 # BAF-Net: Modality-Specific Speech Enhancement and Noise-Adaptive Fusion for Acoustic and Body-Conduction Microphone Framework
 
-This is an official PyTorch implementataion of paper "Modality-Specific Speech Enhancement and Noise-Adaptive Fusion for Acoustic and Body-Conduction Microphone Framework", which has been accepted to INTERSPEECH 2025. 
+This is an official PyTorch implementataion of paper "Modality-Specific Speech Enhancement and Noise-Adaptive Fusion for Acoustic and Body-Conduction Microphone Framework", which has been accepted to [INTERSPEECH 2025](https://www.isca-archive.org/interspeech_2025/kim25s_interspeech.html#). 
 
-## Dataset download
+## Dataset preparation
 The BAF-Net is trained and evaluated with Throat-Acoustic Parining Speech (TAPS) Dataset. The dataset can be accessed at [Huggingface](https://huggingface.co/datasets/yskim3271/Throat_and_Acoustic_Pairing_Speech_Dataset).
 
-## Noise dataset download
+## Noise dataset preparation
 The noise dataset used for data augmentation during training is the ICASSP 2023 Deep Noise Suppression Challenge dataset, which can be downloaded from [here](https://github.com/microsoft/DNS-Challenge). This dataset is used to add realistic noise to clean speech samples for robust model training.
+
+After downloading the noise dataset, both the noise files and RIR files should be resampled to 16 kHz.  
+The code for resampling is provided in `resample.py`.
+
+```
+python resample.py \
+    --noise_dir PATH_TO_NOISE_DIR \
+    --rir_dir PATH_TO_RIR_DIR \
+    [--noise_out OUTPUT_DIR_FOR_NOISE] \
+    [--rir_out OUTPUT_DIR_FOR_RIR] \
+    [--sr TARGET_SAMPLE_RATE]
+```
+
 
 The dataset splits are defined in the following files:
 - `dataset/noise_train.txt`: Training set noise files
@@ -19,6 +32,12 @@ Similarly, the Room Impulse Response (RIR) dataset splits are defined in:
 - `dataset/rir_test.txt`: Test set RIR files
 
 These predefined splits ensure reproducibility of the experimental results.
+You need to add the directory paths containing the noise and RIR data to the config.yaml file.
+```yaml
+dset:
+  noise_dir: PATH_TO_NOISE_DIR
+  rir_dir: PATH_TO_RIR_DIR
+```
 
 ## Requirements
 `pip install -r requirements.txt`
@@ -123,7 +142,16 @@ python enhance.py \
 The enhanced speech samples are saved in the `wavs_0dB` folder of the specified output directory, and the corresponding spectrograms are saved in the `mels_0dB` folder. Each sample includes acoustic microphone (AM) input, acoustic microphone output, throat microphone (TM) input, and the model's prediction results.
 
 ## How to cite
-To be added.
-
+```
+@inproceedings{kim25s_interspeech,
+  title     = {{Modality-Specific Speech Enhancement and Noise-Adaptive Fusion for Acoustic and Body-Conduction Microphone Framework}},
+  author    = {Yunsik Kim and Yoonyoung Chung},
+  year      = {2025},
+  booktitle = {{Interspeech 2025}},
+  pages     = {3833--3837},
+  doi       = {10.21437/Interspeech.2025-2581},
+  issn      = {2958-1796},
+}
+```
 ## License
 BAF-Net is released under the MIT license as found in the LICENSE file.
